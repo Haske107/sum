@@ -130,6 +130,9 @@ def truncate(number, digits) -> float:
     stepper = 10.0 ** digits
     return math.trunc(stepper * number) / stepper
 
+def myround(x, base=1/24):
+    return base * round(x/base)
+
 
 def createSlug(duration):
 
@@ -138,7 +141,7 @@ def createSlug(duration):
         Title = TextClip('.', color='black', size=(480, 640), bg_color="black", fontsize=30)
 
         # truncate and also set to nearest frame
-        formatted_duration = truncate(duration, 3)
+        formatted_duration = truncate(myround(duration),3)
 
         # set to truncated duration
         TitleClip = Title.set_duration(formatted_duration)
@@ -264,7 +267,3 @@ FinalAV = FinalVisual.set_audio(audio)
 # render video
 FinalAV.write_videofile("./renders/Limp.mp4", codec='libx264', fps=24)
 print(Token.Chronology, Token.ID, Token.Sentiment)
-
-
-
-
