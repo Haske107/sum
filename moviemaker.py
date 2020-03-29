@@ -6,7 +6,7 @@ import random
 for x in range(10):
     #   SET DURATION TO TEST CLIPS
     dur = random.randrange(2, 8)
-    Title = TextClip("SECONDARY" + str(dur), color='white', size=(480, 640), bg_color="purple", fontsize=30)
+    Title = TextClip("SECONDARY" + str(dur), color='white', size=(1920, 1080), bg_color="purple", fontsize=30)
     TitleClip = Title.set_duration(dur)
     TitleClip.write_videofile("secondary/Secondary-" + str(dur) + ".mp4", codec='libx264', fps=24)
 

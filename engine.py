@@ -1,18 +1,22 @@
 from os import listdir
+import os.path
+
 import random
 from random import randint
 import uuid
-import numpy, scipy, matplotlib.pyplot as plt, IPython.display as ipd
+import IPython.display as ipd
 import librosa, librosa.display
 from moviepy.editor import *
 import math
+import csv
 
 
 # GLOBAL VARIABLES
-CLIPS_RELATIVE_PATH = "./clips/"
+METADATA_PATH = "metadata.csv"
+CLIPS_RELATIVE_PATH = "./newclips/"
 SLUG_RELATIVE_PATH = "./slug/"
 SECONDARY_RELATIVE_PATH = "./secondary/"
-SONG_PATH = "./audio/limp.mp3"
+SONG_PATH = "./audio/SUMTRACK.mp3"
 OPEN_SLUGS = []
 
 
@@ -29,7 +33,7 @@ class Clip:
 class Song:
     def __init__(self):
         self.Name = "Test Song"
-        self.Duration = random.randrange(130, 360)
+        self.Duration = random.randrange(100, 360)
 
 
 class RenderToken:
@@ -64,34 +68,44 @@ class Range:
 
 
 # FUNCTIONS
-def select_clips_for_all_slots(master_clips, sentiment_range):
+def select_clips_for_all_slots(master_clips, sentiment_range, metadata):
     selected_clips = []
     for slot in master_clips:
-        selected_clips.append(select_clip_for_slot(slot, random.randrange(sentiment_range.low, sentiment_range.high)))
+        selected_clips.append(select_clip_for_slot(slot, random.randrange(sentiment_range.low, sentiment_range.high), metadata))
     return selected_clips
 
+def select_clip_for_slot(clips, target, metadata):
+    joined_clips = []
+    for clip_ in clips:
+        for clip in metadata:
+            if clip[1][10:] == clip_[10:]:
+                joined_clips.append([clip_, clip[3]])
+    return min(joined_clips, key=lambda x: abs((int(x[1]) + 3) - target))[0]
 
-def select_clip_for_slot(clips, target):
-    return min(clips, key=lambda x: abs(int(x[6]) - target))
 
-
-def categorize_clips_by_slot(clip_bin):
+def categorize_clips_by_slot(metadata):
     slotted_array = []
-    for Slot in range(50):
-        temp_array = []
-        for Clip in range(5):
-            temp_array.append(clip_bin.pop())
-        slotted_array.append(temp_array)
+    for clip in metadata:
+        if len(slotted_array) < int(clip[2]):
+            slotted_array.append([])
+        #add into slot
+        # clip is csv row
+        slotted_array[int(clip[2])-1].append(clip[1])
     return slotted_array
 
 
 def clipify(clip_array):
-    print("Clipify")
     initialized_clips = []
+    videofiles = os.listdir("./newclips/")
     for ClipName in clip_array:
-        MPObject = VideoFileClip("./clips/" + ClipName)
-        New_Clip = Clip(MPObject)
-        initialized_clips.append(New_Clip)
+        for video in videofiles:
+            if video in ClipName:
+                filename = "./newclips/" + video
+                if os.path.isfile(filename):
+                    MPObject = VideoFileClip(filename)
+                    New_Clip = Clip(MPObject)
+                    initialized_clips.append(New_Clip)
+                    print(ClipName + "Initialized")
     return initialized_clips
 
 
@@ -136,38 +150,41 @@ def myround(x, base=1/24):
 
 def createSlug(duration):
 
-        print("Creating Slug")
-        # SET DURATION TO TEST CLIPS
-        Title = TextClip('.', color='black', size=(480, 640), bg_color="black", fontsize=30)
-
         # truncate and also set to nearest frame
-        formatted_duration = truncate(myround(duration),3)
+        formatted_duration = truncate(myround(duration), 3)
 
-        # set to truncated duration
-        TitleClip = Title.set_duration(formatted_duration)
+        found = False
 
         # check if the slug already exists
         for slug in OPEN_SLUGS:
             if slug.Path == "slug/Slug-" + str(formatted_duration) + ".mp4":
                 print("Found Slug")
-                return slug
+                found = True
 
-        # if it exists import from global -- else create and store
-        TitleClip.write_videofile("slug/Slug-" + str(formatted_duration) + ".mp4", codec='libx264', fps=24)
-        Slug = Clip(VideoFileClip("slug/Slug-" + str(formatted_duration) + ".mp4"))
-        Slug.Duration = formatted_duration
-        Slug.Sentiment = 0
-        Slug.Slot = 0
-        Slug.Path = "slug/Slug-" + str(formatted_duration) + ".mp4"
-        OPEN_SLUGS.append(Slug)
-        return Slug
+        if not found:
+            print("Creating Slug")
+            # SET DURATION TO TEST CLIPS
+            Title = TextClip('.', color='black', size=(1920, 1080), bg_color="black", fontsize=30)
+
+            # set to truncated duration
+            TitleClip = Title.set_duration(formatted_duration)
+
+            # if it exists import from global -- else create and store
+            TitleClip.write_videofile("slug/Slug-" + str(formatted_duration) + ".mp4", codec='libx264', fps=24)
+            Slug = Clip(VideoFileClip("slug/Slug-" + str(formatted_duration) + ".mp4"))
+            Slug.Duration = formatted_duration
+            Slug.Sentiment = 0
+            Slug.Slot = 0
+            Slug.Path = "slug/Slug-" + str(formatted_duration) + ".mp4"
+            OPEN_SLUGS.append(Slug)
+            return Slug
 
 
 
 def find_next_beat(time):
     x, sr = librosa.load(SONG_PATH)
     ipd.Audio(x, rate=sr)
-    tempo, beat_times = librosa.beat.beat_track(x, sr=sr, start_bpm=85, units='time')
+    tempo, beat_times = librosa.beat.beat_track(x, sr=sr, start_bpm=120, units='time')
     target = 0
     temp = 10
     for x in beat_times:
@@ -233,26 +250,43 @@ Song = Song()
 
 print("SENTIMENT TOKEN GENERATED: ", Token.Sentiment)
 
+
+
 # gather clips and meta data (in this case metadata is encoded in filename)
-UNSORTED_PRIMARY_CLIP_POOL = [f for f in listdir(CLIPS_RELATIVE_PATH) if not f.startswith('.')]
 
-# sort clips in ascending order
-PRIMARY_CLIP_POOL = sorted(UNSORTED_PRIMARY_CLIP_POOL, key=lambda x: x)
 
-# slotted clips bin
-SLOTTED_CLIPS_POOL = categorize_clips_by_slot(PRIMARY_CLIP_POOL)
+
+# gather metadata
+
+METADATA = []
+
+with open(METADATA_PATH) as csv_file:
+    csv_reader = csv.reader(csv_file, delimiter=',')
+    line_count = 0
+    for row in csv_reader:
+        if line_count != 0:
+            METADATA.append(row)
+        line_count += 1
+
+
+SLOTTED_CLIPS_POOL = categorize_clips_by_slot(METADATA[0:30])
 
 # choose clips for each slot
-CHOSEN_CLIPS_POOL = select_clips_for_all_slots(SLOTTED_CLIPS_POOL, Range)
+CHOSEN_CLIPS_POOL = select_clips_for_all_slots(SLOTTED_CLIPS_POOL, Range, METADATA)
 
 # initialize into clip objects
 INITIALIZED_CLIP_POOL = clipify(CHOSEN_CLIPS_POOL)
+
+print(INITIALIZED_CLIP_POOL)
 
 # check for room for secondary clips (add if necessary)
 CLIPS_AND_SECONDARY = add_secondary(INITIALIZED_CLIP_POOL)
 
 # add slugs
 CLIPS_AND_SLUGS = add_slugs(CLIPS_AND_SECONDARY)
+
+#clean
+CLIPS_AND_SLUGS = [x for x in CLIPS_AND_SLUGS if x is not None]
 
 # concatenate videos
 print("Concatenating")
@@ -265,5 +299,5 @@ print("Set audio")
 FinalAV = FinalVisual.set_audio(audio)
 
 # render video
-FinalAV.write_videofile("./renders/Limp.mp4", codec='libx264', fps=24)
+FinalAV.write_videofile("./renders/Sample3.mp4", codec='libx264', fps=24)
 print(Token.Chronology, Token.ID, Token.Sentiment)
